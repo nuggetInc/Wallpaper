@@ -1,58 +1,39 @@
-use std::{ffi::OsStr, os::windows::prelude::OsStrExt, time::Duration};
+use std::{env, ffi::OsStr, fs::File, os::windows::prelude::OsStrExt, path::PathBuf};
 
 use winapi::{
     self,
-    shared::{
-        minwindef::{FALSE, HKEY, MAX_PATH, TRUE},
-        windef::HWND,
-    },
+    shared::minwindef::{FALSE, HKEY, MAX_PATH, TRUE},
     um::{
         winnt::REG_NOTIFY_CHANGE_LAST_SET,
         winreg::{RegNotifyChangeKeyValue, RegOpenKeyW, HKEY_CURRENT_USER},
         winuser::{
-            CreateWindowExW, SendMessageW, SystemParametersInfoW, CW_USEDEFAULT,
-            SPIF_UPDATEINIFILE, SPI_GETDESKWALLPAPER, SPI_SETDESKWALLPAPER, WM_SETTINGCHANGE,
-            WS_DISABLED, WS_EX_LEFT,
+            SystemParametersInfoW, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE, SPI_GETDESKWALLPAPER,
+            SPI_SETDESKWALLPAPER,
         },
     },
 };
 
 fn main() {
-    let key_path = OsStr::new(r"Control Panel\Desktop")
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<u16>>();
-
-    let path = r"C:\users\stage\wallpaper.jpg";
-
-    let file_path: Vec<u16> = OsStr::new(&path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
     unsafe {
-        let h_wnd = CreateWindowExW(
-            WS_EX_LEFT,
-            &0,
-            &0,
-            WS_DISABLED,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        );
+        let path = env::temp_dir().join("wallpaper.jpg");
 
-        let mut h_key: HKEY = std::ptr::null_mut();
-        RegOpenKeyW(HKEY_CURRENT_USER, key_path.as_ptr(), &mut h_key);
+        let file_path: Vec<u16> = OsStr::new(&path)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
 
         // println!("Started!");
         if has_changed(&file_path) {
-            change(h_wnd, &file_path);
+            change(&path, &file_path);
         }
+
+        let key_path = OsStr::new(r"Control Panel\Desktop")
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<u16>>();
+
+        let mut h_key: HKEY = std::ptr::null_mut();
+        RegOpenKeyW(HKEY_CURRENT_USER, key_path.as_ptr(), &mut h_key);
 
         loop {
             RegNotifyChangeKeyValue(
@@ -64,36 +45,45 @@ fn main() {
             );
 
             // println!("Changed!");
-            std::thread::sleep(Duration::from_millis(10));
-            if has_changed(&file_path) {
-                change(h_wnd, &file_path);
+            if !has_changed(&file_path) {
+                continue;
             }
+
+            change(&path, &file_path);
         }
     }
 }
 
 unsafe fn has_changed(file_path: &Vec<u16>) -> bool {
-    let mut buffer: Vec<u16> = Vec::with_capacity(file_path.len());
-    buffer.set_len(file_path.len());
+    let mut buffer: Vec<u16> = Vec::with_capacity(MAX_PATH);
 
     SystemParametersInfoW(
         SPI_GETDESKWALLPAPER,
         MAX_PATH as u32,
         buffer.as_ptr() as _,
-        SPIF_UPDATEINIFILE,
+        0,
     );
+    buffer.set_len(file_path.len());
 
-    return &buffer != file_path;
+    &buffer != file_path
 }
 
-unsafe fn change(h_wnd: HWND, file_path: &Vec<u16>) {
+unsafe fn change(path: &PathBuf, file_path: &Vec<u16>) {
+    if !path.exists() {
+        let mut file = File::create(path).unwrap();
+        let url = "https://raw.githubusercontent.com/nuggetInc/Wallpaper/main/wallpapers/windows 11 red.jpg";
+        reqwest::blocking::get(url)
+            .unwrap()
+            .copy_to(&mut file)
+            .unwrap();
+
+        // println!("Downloaded!");
+    }
+
     SystemParametersInfoW(
         SPI_SETDESKWALLPAPER,
         0,
         file_path.as_ptr() as _,
-        SPIF_UPDATEINIFILE,
+        SPIF_UPDATEINIFILE | SPIF_SENDCHANGE,
     );
-
-    // println!("Updated!");
-    SendMessageW(h_wnd, WM_SETTINGCHANGE, 0, 0);
 }
