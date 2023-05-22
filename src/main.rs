@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 use std::{env, ffi::OsStr, fs::File, os::windows::prelude::OsStrExt, path::PathBuf};
 
 use winapi::{
