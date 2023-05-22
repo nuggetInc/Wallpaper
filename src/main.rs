@@ -1,5 +1,5 @@
 #![windows_subsystem = "windows"]
-use std::{env, ffi::OsStr, fs::File, os::windows::prelude::OsStrExt, path::PathBuf};
+use std::{env, ffi::OsStr, os::windows::prelude::OsStrExt, path::PathBuf};
 
 use winapi::{
     self,
@@ -16,22 +16,18 @@ use winapi::{
 
 fn main() {
     unsafe {
-        let path = env::temp_dir().join("wallpaper.jpg");
+        let path = env::temp_dir().join(option_env!("WALLPAPER_PATH").unwrap_or("wallpaper.jpg"));
+        // println!("{path:?}");
 
-        let file_path: Vec<u16> = OsStr::new(&path)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
+        let buffer: Box<[u16]> = Box::new([0; MAX_PATH]);
+        let path_wide = to_wide_boxed(&path);
 
         // println!("Started!");
-        if has_changed(&file_path) {
-            change(&path, &file_path);
+        if has_changed(&path_wide, &buffer) {
+            change(&path, &path_wide);
         }
 
-        let key_path = OsStr::new(r"Control Panel\Desktop")
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect::<Vec<u16>>();
+        let key_path: Box<[u16]> = to_wide_boxed(r"Control Panel\Desktop");
 
         let mut h_key: HKEY = std::ptr::null_mut();
         RegOpenKeyW(HKEY_CURRENT_USER, key_path.as_ptr(), &mut h_key);
@@ -46,33 +42,35 @@ fn main() {
             );
 
             // println!("Changed!");
-            if !has_changed(&file_path) {
+            if !has_changed(&path_wide, &buffer) {
                 continue;
             }
 
-            change(&path, &file_path);
+            change(&path, &path_wide);
         }
     }
 }
 
-unsafe fn has_changed(file_path: &Vec<u16>) -> bool {
-    let mut buffer: Vec<u16> = Vec::with_capacity(MAX_PATH);
-
+unsafe fn has_changed(file_path: &Box<[u16]>, buffer: &Box<[u16]>) -> bool {
     SystemParametersInfoW(
         SPI_GETDESKWALLPAPER,
         MAX_PATH as u32,
         buffer.as_ptr() as _,
         0,
     );
-    buffer.set_len(file_path.len());
 
-    &buffer != file_path
+    buffer != file_path
 }
 
-unsafe fn change(path: &PathBuf, file_path: &Vec<u16>) {
+unsafe fn change(path: &PathBuf, path_wide: &Box<[u16]>) {
+    #[cfg(feature = "download")]
     if !path.exists() {
+        use std::fs::File;
+
         let mut file = File::create(path).unwrap();
-        let url = "https://raw.githubusercontent.com/nuggetInc/Wallpaper/main/wallpapers/windows 11 red.jpg";
+        let url = option_env!("WALLPAPER_URL").unwrap_or(
+            "https://raw.githubusercontent.com/nuggetInc/Wallpaper/main/wallpapers/windows 11 red.jpg"
+        );
         reqwest::blocking::get(url)
             .unwrap()
             .copy_to(&mut file)
@@ -84,7 +82,17 @@ unsafe fn change(path: &PathBuf, file_path: &Vec<u16>) {
     SystemParametersInfoW(
         SPI_SETDESKWALLPAPER,
         0,
-        file_path.as_ptr() as _,
+        path_wide.as_ptr() as _,
         SPIF_UPDATEINIFILE | SPIF_SENDCHANGE,
     );
+}
+
+fn to_wide_boxed<S>(value: &S) -> Box<[u16]>
+where
+    S: AsRef<OsStr> + ?Sized,
+{
+    OsStr::new(value)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
