@@ -1,4 +1,4 @@
-use std::{env, ffi::OsStr, fs::File, path::PathBuf, str::FromStr};
+use std::{env, error::Error, ffi::OsStr, fs::File, path::PathBuf, str::FromStr};
 
 use once_cell::sync::Lazy;
 use reqwest::Url;

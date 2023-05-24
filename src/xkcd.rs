@@ -1,4 +1,4 @@
-use std::{env, fs::File, path::PathBuf};
+use std::{env, error::Error, fs::File, path::PathBuf};
 
 use once_cell::sync::Lazy;
 use rand::Rng;
@@ -26,7 +26,7 @@ pub(crate) fn download() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn get_count() -> Result<usize> {
+fn get_count() -> Result<usize, Box<dyn Error>> {
     let response = CLIENT.get("https://xkcd.com/info.0.json").send()?;
     let text = response.text()?;
 
