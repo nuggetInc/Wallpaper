@@ -1,6 +1,13 @@
-#![windows_subsystem = "windows"]
-use std::{env, ffi::OsStr, os::windows::prelude::OsStrExt, path::PathBuf};
+// #![windows_subsystem = "windows"]
+#[cfg(feature = "url")]
+mod url;
+#[cfg(feature = "xkcd")]
+mod xkcd;
 
+use std::{env, error::Error, ffi::OsStr, os::windows::prelude::OsStrExt, path::PathBuf};
+
+use once_cell::sync::Lazy;
+use reqwest::blocking::Client;
 use winapi::{
     self,
     shared::minwindef::{FALSE, HKEY, MAX_PATH, TRUE},
@@ -14,20 +21,27 @@ use winapi::{
     },
 };
 
+pub(crate) type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+static PATH: Lazy<Option<PathBuf>> =
+    Lazy::new(|| option_env!("WALLPAPER_PATH").map(|path| PathBuf::from(path)));
+static PATH_WIDE: Lazy<Option<Box<[u16]>>> = Lazy::new(|| PATH.as_ref().map(to_wide));
+
 fn main() {
+    let path = env::temp_dir().join(option_env!("WALLPAPER_PATH").unwrap_or("wallpaper.jpg"));
+    let path_wide = to_wide(&path);
+
+    let buffer: Box<[u16]> = Box::new([0; MAX_PATH]);
+
+    let client = Client::new();
+
     unsafe {
-        let path = env::temp_dir().join(option_env!("WALLPAPER_PATH").unwrap_or("wallpaper.jpg"));
-        // println!("{path:?}");
-
-        let buffer: Box<[u16]> = Box::new([0; MAX_PATH]);
-        let path_wide = to_wide_boxed(&path);
-
         // println!("Started!");
         if has_changed(&path_wide, &buffer) {
-            change(&path, &path_wide);
+            update(&client);
         }
 
-        let key_path: Box<[u16]> = to_wide_boxed(r"Control Panel\Desktop");
+        let key_path: Box<[u16]> = to_wide(r"Control Panel\Desktop");
 
         let mut h_key: HKEY = std::ptr::null_mut();
         RegOpenKeyW(HKEY_CURRENT_USER, key_path.as_ptr(), &mut h_key);
@@ -42,16 +56,14 @@ fn main() {
             );
 
             // println!("Changed!");
-            if !has_changed(&path_wide, &buffer) {
-                continue;
+            if has_changed(&path_wide, &buffer) {
+                update(&client);
             }
-
-            change(&path, &path_wide);
         }
     }
 }
 
-unsafe fn has_changed(file_path: &Box<[u16]>, buffer: &Box<[u16]>) -> bool {
+unsafe fn has_changed(path_wide: &Box<[u16]>, buffer: &Box<[u16]>) -> bool {
     SystemParametersInfoW(
         SPI_GETDESKWALLPAPER,
         MAX_PATH as u32,
@@ -59,26 +71,37 @@ unsafe fn has_changed(file_path: &Box<[u16]>, buffer: &Box<[u16]>) -> bool {
         0,
     );
 
-    buffer != file_path
+    buffer != path_wide
 }
 
-unsafe fn change(path: &PathBuf, path_wide: &Box<[u16]>) {
-    #[cfg(feature = "download")]
-    if !path.exists() {
-        use std::fs::File;
-
-        let mut file = File::create(path).unwrap();
-        let url = option_env!("WALLPAPER_URL").unwrap_or(
-            "https://raw.githubusercontent.com/nuggetInc/Wallpaper/main/wallpapers/windows 11 red.jpg"
-        );
-        reqwest::blocking::get(url)
-            .unwrap()
-            .copy_to(&mut file)
-            .unwrap();
-
-        // println!("Downloaded!");
+unsafe fn update(client: &Client) {
+    #[cfg(feature = "xkcd")]
+    if let Err(error) = xkcd::download(client) {
+        eprintln!("{error}");
+        eprintln!("{error:?}");
+    } else {
+        set_path(&xkcd::PATH_WIDE);
+        return;
     }
 
+    // Only download image if url feature is enabled
+    // Sometimes a fallback if xkcd download failed
+    #[cfg(feature = "url")]
+    if let Err(error) = url::download(client) {
+        eprintln!("{error}");
+        eprintln!("{error:?}");
+    } else {
+        set_path(&url::PATH_WIDE);
+        return;
+    }
+
+    // Only run if both the url feature and the xkcd feature are disabled
+    if PATH.is_some() && PATH.as_ref().unwrap().exists() {
+        set_path(&PATH_WIDE.as_ref().unwrap());
+    }
+}
+
+unsafe fn set_path(path_wide: &Box<[u16]>) {
     SystemParametersInfoW(
         SPI_SETDESKWALLPAPER,
         0,
@@ -87,7 +110,7 @@ unsafe fn change(path: &PathBuf, path_wide: &Box<[u16]>) {
     );
 }
 
-fn to_wide_boxed<S>(value: &S) -> Box<[u16]>
+pub(crate) fn to_wide<S>(value: &S) -> Box<[u16]>
 where
     S: AsRef<OsStr> + ?Sized,
 {
