@@ -1,9 +1,9 @@
 use std::{env, ffi::OsStr, fs::File, path::PathBuf, str::FromStr};
 
 use once_cell::sync::Lazy;
-use reqwest::{blocking::Client, Url};
+use reqwest::Url;
 
-use crate::{to_wide, Result};
+use crate::{to_wide, Result, CLIENT};
 
 static URL: Lazy<Url> = Lazy::new(|| {
     let url = option_env!("WALLPAPER_URL").expect(
@@ -23,12 +23,12 @@ static PATH: Lazy<PathBuf> = Lazy::new(|| {
 });
 pub(crate) static PATH_WIDE: Lazy<Box<[u16]>> = Lazy::new(|| to_wide(&*PATH));
 
-pub(crate) fn download(client: &Client) -> Result<()> {
+pub(crate) fn download() -> Result<()> {
     if PATH.exists() {
         return Ok(());
     }
 
-    let mut response = client.get(URL.clone()).send()?;
+    let mut response = CLIENT.get(URL.clone()).send()?;
     let mut file = File::create(&*PATH)?;
     response.copy_to(&mut file)?;
 

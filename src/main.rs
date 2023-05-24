@@ -7,6 +7,7 @@ mod xkcd;
 use std::{env, error::Error, ffi::OsStr, os::windows::prelude::OsStrExt, path::PathBuf};
 
 use once_cell::sync::Lazy;
+#[cfg(any(feature = "url", feature = "xkcd"))]
 use reqwest::blocking::Client;
 use winapi::{
     self,
@@ -23,6 +24,9 @@ use winapi::{
 
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
+#[cfg(any(feature = "url", feature = "xkcd"))]
+pub(crate) static CLIENT: Lazy<Client> = Lazy::new(Client::new);
+
 static PATH: Lazy<Option<PathBuf>> =
     Lazy::new(|| option_env!("WALLPAPER_PATH").map(|path| PathBuf::from(path)));
 static PATH_WIDE: Lazy<Option<Box<[u16]>>> = Lazy::new(|| PATH.as_ref().map(to_wide));
@@ -33,12 +37,10 @@ fn main() {
 
     let buffer: Box<[u16]> = Box::new([0; MAX_PATH]);
 
-    let client = Client::new();
-
     unsafe {
         // println!("Started!");
         if has_changed(&path_wide, &buffer) {
-            update(&client);
+            update();
         }
 
         let key_path: Box<[u16]> = to_wide(r"Control Panel\Desktop");
@@ -57,7 +59,7 @@ fn main() {
 
             // println!("Changed!");
             if has_changed(&path_wide, &buffer) {
-                update(&client);
+                update();
             }
         }
     }
@@ -74,9 +76,9 @@ unsafe fn has_changed(path_wide: &Box<[u16]>, buffer: &Box<[u16]>) -> bool {
     buffer != path_wide
 }
 
-unsafe fn update(client: &Client) {
+unsafe fn update() {
     #[cfg(feature = "xkcd")]
-    if let Err(error) = xkcd::download(client) {
+    if let Err(error) = xkcd::download() {
         eprintln!("{error}");
         eprintln!("{error:?}");
     } else {
@@ -87,7 +89,7 @@ unsafe fn update(client: &Client) {
     // Only download image if url feature is enabled
     // Sometimes a fallback if xkcd download failed
     #[cfg(feature = "url")]
-    if let Err(error) = url::download(client) {
+    if let Err(error) = url::download() {
         eprintln!("{error}");
         eprintln!("{error:?}");
     } else {
