@@ -1,10 +1,10 @@
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 #[cfg(feature = "url")]
 mod url;
 #[cfg(feature = "xkcd")]
 mod xkcd;
 
-use std::{env, error::Error, ffi::OsStr, os::windows::prelude::OsStrExt, path::PathBuf};
+use std::{env, ffi::OsStr, os::windows::prelude::OsStrExt, path::PathBuf};
 
 use once_cell::sync::Lazy;
 #[cfg(any(feature = "url", feature = "xkcd"))]
