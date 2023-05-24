@@ -22,8 +22,6 @@ use winapi::{
     },
 };
 
-pub(crate) type Result<T> = std::result::Result<T, Box<dyn Error>>;
-
 #[cfg(any(feature = "url", feature = "xkcd"))]
 pub(crate) static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 

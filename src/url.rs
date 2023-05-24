@@ -3,7 +3,7 @@ use std::{env, ffi::OsStr, fs::File, path::PathBuf, str::FromStr};
 use once_cell::sync::Lazy;
 use reqwest::Url;
 
-use crate::{to_wide, Result, CLIENT};
+use crate::{to_wide, CLIENT};
 
 static URL: Lazy<Url> = Lazy::new(|| {
     let url = option_env!("WALLPAPER_URL").expect(
@@ -23,7 +23,7 @@ static PATH: Lazy<PathBuf> = Lazy::new(|| {
 });
 pub(crate) static PATH_WIDE: Lazy<Box<[u16]>> = Lazy::new(|| to_wide(&*PATH));
 
-pub(crate) fn download() -> Result<()> {
+pub(crate) fn download() -> Result<(), Box<dyn Error>> {
     if PATH.exists() {
         return Ok(());
     }
