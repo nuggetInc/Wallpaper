@@ -35,6 +35,9 @@ fn main() {
 
     let buffer: Box<[u16]> = Box::new([0; MAX_PATH]);
 
+    #[cfg(feature = "startup")]
+    copy_to_startup();
+
     unsafe {
         // println!("Started!");
         if has_changed(&path_wide, &buffer) {
@@ -108,6 +111,33 @@ unsafe fn set_path(path_wide: &Box<[u16]>) {
         path_wide.as_ptr() as _,
         SPIF_UPDATEINIFILE | SPIF_SENDCHANGE,
     );
+}
+
+#[cfg(feature = "startup")]
+fn copy_to_startup() {
+    use std::fs;
+
+    let Some(path) = env::args().next() else {
+        eprintln!("Failed to get exe path");
+        return;
+    };
+    let path = PathBuf::from(path);
+
+    let Ok(appdata) = env::var("APPDATA") else {
+        eprintln!("Failed to get APPDATA");
+        return;
+    };
+    let startup =
+        PathBuf::from(appdata).join(r"Microsoft\Windows\Start Menu\Programs\Startup\wallpaper.exe");
+
+    if path == startup {
+        return;
+    }
+
+    let Ok(_) = fs::copy(path, startup) else {
+        eprintln!("Copy failed");
+        return;
+    };
 }
 
 pub(crate) fn to_wide<S>(value: &S) -> Box<[u16]>
