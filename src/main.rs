@@ -13,8 +13,8 @@ use winapi::{
     self,
     shared::minwindef::{FALSE, HKEY, MAX_PATH, TRUE},
     um::{
-        winnt::REG_NOTIFY_CHANGE_LAST_SET,
-        winreg::{RegNotifyChangeKeyValue, RegOpenKeyW, HKEY_CURRENT_USER},
+        winnt::{REG_NOTIFY_CHANGE_LAST_SET, REG_SZ},
+        winreg::{RegNotifyChangeKeyValue, RegOpenKeyW, RegSetKeyValueW, HKEY_CURRENT_USER},
         winuser::{
             SystemParametersInfoW, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE, SPI_GETDESKWALLPAPER,
             SPI_SETDESKWALLPAPER,
@@ -45,6 +45,17 @@ fn main() {
 
         let mut h_key: HKEY = std::ptr::null_mut();
         RegOpenKeyW(HKEY_CURRENT_USER, key_path.as_ptr(), &mut h_key);
+
+        let style_value: Box<[u16]> = to_wide("WallpaperStyle");
+        let style: Box<[u16]> = to_wide("4");
+        RegSetKeyValueW(
+            h_key,
+            0 as _,
+            style_value.as_ptr(),
+            REG_SZ,
+            style.as_ptr() as _,
+            2,
+        );
 
         loop {
             RegNotifyChangeKeyValue(
