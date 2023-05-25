@@ -4,7 +4,7 @@ mod url;
 #[cfg(feature = "xkcd")]
 mod xkcd;
 
-use std::{env, ffi::OsStr, os::windows::prelude::OsStrExt, path::PathBuf};
+use std::{ffi::OsStr, os::windows::prelude::OsStrExt, path::PathBuf};
 
 use once_cell::sync::Lazy;
 #[cfg(any(feature = "url", feature = "xkcd"))]
@@ -30,9 +30,6 @@ static PATH: Lazy<Option<PathBuf>> =
 static PATH_WIDE: Lazy<Option<Box<[u16]>>> = Lazy::new(|| PATH.as_ref().map(to_wide));
 
 fn main() {
-    let path = env::temp_dir().join(option_env!("WALLPAPER_PATH").unwrap_or("wallpaper.jpg"));
-    let path_wide = to_wide(&path);
-
     let buffer: Box<[u16]> = Box::new([0; MAX_PATH]);
 
     #[cfg(feature = "startup")]
@@ -40,7 +37,7 @@ fn main() {
 
     unsafe {
         // println!("Started!");
-        if has_changed(&path_wide, &buffer) {
+        if has_changed(&buffer) {
             update();
         }
 
@@ -59,14 +56,14 @@ fn main() {
             );
 
             // println!("Changed!");
-            if has_changed(&path_wide, &buffer) {
+            if has_changed(&buffer) {
                 update();
             }
         }
     }
 }
 
-unsafe fn has_changed(path_wide: &Box<[u16]>, buffer: &Box<[u16]>) -> bool {
+unsafe fn has_changed(buffer: &Box<[u16]>) -> bool {
     SystemParametersInfoW(
         SPI_GETDESKWALLPAPER,
         MAX_PATH as u32,
@@ -74,7 +71,23 @@ unsafe fn has_changed(path_wide: &Box<[u16]>, buffer: &Box<[u16]>) -> bool {
         0,
     );
 
-    buffer != path_wide
+    #[cfg(feature = "xkcd")]
+    if buffer == &*xkcd::PATH_WIDE {
+        return false;
+    }
+
+    #[cfg(feature = "url")]
+    if buffer == &*url::PATH_WIDE {
+        return false;
+    }
+
+    if let Some(path_wide) = &*PATH_WIDE {
+        if buffer == path_wide {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 unsafe fn update() {
@@ -115,7 +128,7 @@ unsafe fn set_path(path_wide: &Box<[u16]>) {
 
 #[cfg(feature = "startup")]
 fn copy_to_startup() {
-    use std::fs;
+    use std::{env, fs};
 
     let Some(path) = env::args().next() else {
         eprintln!("Failed to get exe path");
